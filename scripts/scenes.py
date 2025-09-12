@@ -1,387 +1,285 @@
-# Save this code as scenes.py
-# In your Google Colab notebook, after cloning your repo, run:
-# !manim -pql scenes.py BB84ProtocolScene
+#
+# MANIM SCRIPT: BB84_Protocol_As_Card_Game.py
+# DESCRIPTION: A visual demonstration of the BB84 protocol using a card game analogy.
+#              This script outlines the animations and logic for an educational video.
+#
 
 from manim import *
-import random
 
-# --- Configuration and Styling ---
-# Consistent colors to match the script
-Z_BASIS_COLOR = BLUE
-X_BASIS_COLOR = RED
-EVE_COLOR = PURPLE
-BACKGROUND_COLOR = "#0E161F"  # A dark, 3b1b-style background
+# --- Helper Class Definitions (Assumed for context) ---
+# class Character(VGroup):
+#     def __init__(self, name, position): ...
+#     def emote(self, emotion): ... # e.g., 'confused', 'happy'
+#
+# class Card(VGroup):
+#     def __init__(self, value, basis, is_face_up=False): ...
+#     def flip(self): ... # Animation to turn the card over
+#     def flip_with_randomization(self): ... # Animation that flashes 0/1 before settling
+#     def alter_basis(self, new_basis): ... # Animation that repaints the card's back
+#
+# class Messenger(VMobject):
+#     def travel(self, path): ... # Animation to move along a path
+# ---
 
-# Card dimensions
-CARD_HEIGHT = 1.2
-CARD_WIDTH = 0.8
-
-class QubitCard(VGroup):
-    """A custom Mobject to represent a qubit as a card."""
-    def __init__(self, bit_value, basis, is_face_down=True):
-        super().__init__()
-        self.bit_value = bit_value  # 0 or 1
-        self.basis = basis          # 'Z' or 'X'
-        self.is_face_down = is_face_down
-        self.corrupted = False      # Flag for Eve's interference
-
-        # Visual components
-        self.back = RoundedRectangle(
-            width=CARD_WIDTH,
-            height=CARD_HEIGHT,
-            corner_radius=0.1,
-            stroke_width=2,
-            stroke_color=WHITE
-        )
-        self.face = self.back.copy()
-        self.face_value_text = Text(str(self.bit_value), font_size=48).move_to(self.face.get_center())
-        
-        self.basis_symbol = Text(self.basis, font_size=24).move_to(
-            self.back.get_center() + DOWN * 0.35 + RIGHT * 0.25
-        )
-
-        # Set colors based on basis
-        basis_color = Z_BASIS_COLOR if self.basis == 'Z' else X_BASIS_COLOR
-        self.back.set_fill(basis_color, opacity=1.0)
-        self.face.set_fill(DARK_GRAY, opacity=1.0)
-
-        # Assemble the card
-        self.add(self.back, self.basis_symbol)
-        if not self.is_face_down:
-            self.remove(self.back, self.basis_symbol)
-            self.add(self.face, self.face_value_text)
-
-    def flip_card(self, scene):
-        """Animates the flipping of the card."""
-        target = self.copy()
-        if self.is_face_down:
-            # Flip to show face
-            target.remove(target.back, target.basis_symbol)
-            target.add(target.face, target.face_value_text)
-        else:
-            # Flip to show back
-            target.remove(target.face, target.face_value_text)
-            target.add(target.back, target.basis_symbol)
-        
-        self.is_face_down = not self.is_face_down
-        scene.play(Transform(self, target, run_time=0.7))
-
-
-class BB84ProtocolScene(MovingCameraScene):
-    """
-    A single, continuous scene that visualizes the entire BB84 protocol.
-    This approach allows for smooth camera movements and transitions between phases.
-    """
+class IntroductionScene(Scene):
     def construct(self):
-        # Set background color
-        self.camera.background_color = BACKGROUND_COLOR
+        # 1. Setup Title and Characters
+        title = Text("BB84: The Protocol as a Card Game", font_size=48)
+        self.play(FadeIn(title))
+        self.wait(1)
+        self.play(FadeOut(title))
 
-        # --- 1. Introduction and Setup ---
-        self.setup_characters_and_channels()
-        
-        # --- 2. Alice Generates and Sends ---
-        alice_bits, alice_bases, qubit_cards = self.alice_prepares_qubits()
-        self.alice_sends_package(qubit_cards)
+        alice = Character(name="Alice", position=LEFT * 5)
+        bob = Character(name="Bob", position=RIGHT * 5)
+        self.play(FadeIn(alice), FadeIn(bob))
 
-        # --- 3. Eve Intercepts ---
-        eve_bases, eve_results = self.eve_eavesdrops(qubit_cards)
+        # 2. Narrate the Premise
+        narrator_text = Text(
+            "A game whose rules are a direct analogy for the laws of quantum mechanics.",
+            font_size=32
+        ).to_edge(UP)
+        self.play(Write(narrator_text))
 
-        # --- 4. Bob Receives and Measures ---
-        self.messenger_continues_to_bob(qubit_cards)
-        bob_bases, bob_results = self.bob_measures_qubits(qubit_cards)
-
-        # --- 5. Basis Comparison ---
-        sifted_key_indices = self.basis_comparison(alice_bases, bob_bases)
-
-        # --- 6. Verification and Conclusion ---
-        self.verify_key(sifted_key_indices, alice_bits, bob_results, eve_results)
-
-
-    def setup_characters_and_channels(self):
-        # Narrator: "Meet Alice and Bob, who wish to share a secret key..."
-        alice = Text("Alice").to_corner(UL, buff=1)
-        bob = Text("Bob").to_corner(UR, buff=1)
-        eve = Text("Eve (Moshe)", color=EVE_COLOR).to_edge(DOWN, buff=0.5)
-
-        self.add(alice, bob, eve)
-        self.alice_pos, self.bob_pos, self.eve_pos = alice.get_center(), bob.get_center(), eve.get_center()
-
-        # Narrator: "Between them are two communication channels."
-        classical_channel = DashedLine(
-            alice.get_bottom() + DOWN*0.2,
-            bob.get_bottom() + DOWN*0.2,
-            color=GRAY
-        )
-        classical_label = Text("Classical Channel", font_size=24).next_to(classical_channel, DOWN)
-        
-        quantum_channel = Line(
-            alice.get_right() + RIGHT*0.5,
-            bob.get_left() + LEFT*0.5,
-            color=BLUE,
-            stroke_width=6
-        ).shift(UP*1.5)
-        quantum_label = Text("Quantum Channel", font_size=24).next_to(quantum_channel, UP)
-
-        self.play(
-            Write(alice),
-            Write(bob),
-            Write(eve),
-            Create(classical_channel),
-            Write(classical_label),
-            Create(quantum_channel),
-            Write(quantum_label),
-        )
+        # 3. Introduce the Cards
+        deck = VGroup(*[Card(value=None, basis=None) for _ in range(8)]).arrange(RIGHT, buff=0.1)
+        deck.move_to(ORIGIN)
+        self.play(FadeIn(deck))
         self.wait(2)
+        self.play(FadeOut(VGroup(narrator_text, deck, alice, bob)))
+
+class TheSetupScene(Scene):
+    def construct(self):
+        # 1. Establish Players
+        alice = Character(name="Alice", position=LEFT * 5)
+        bob = Character(name="Bob", position=RIGHT * 5)
+        moshe = Character(name="Moshe", position=DOWN * 2)
+        self.add(alice, bob, moshe)
+
+        # 2. Public Channel
+        public_channel = DashedLine(alice.get_right(), bob.get_left(), color=GREY)
+        public_label = Text("Public Channel", font_size=24).next_to(public_channel, UP)
+        self.play(Create(public_channel), Write(public_label))
+
+        open_message = VGroup(Rectangle(width=1, height=0.5), Text("Hi Bob!", font_size=18)).move_to(alice.get_right())
+        moshe_reads_line = Line(moshe.get_top(), public_channel.get_center(), color=YELLOW)
+        self.play(open_message.animate.move_to(bob.get_left()))
+        self.play(Create(moshe_reads_line), run_time=0.5)
+        self.play(FadeOut(moshe_reads_line), run_time=0.5)
+        self.play(FadeOut(open_message))
+
+        # 3. Quantum Channel
+        quantum_channel = Line(alice.get_right(), bob.get_left(), color=BLUE_C, stroke_width=6)
+        quantum_label = Text("Quantum Channel", font_size=24).next_to(quantum_channel, DOWN)
+        self.play(ReplacementTransform(public_channel, quantum_channel), ReplacementTransform(public_label, quantum_label))
         
-        self.classical_channel = classical_channel
-        self.quantum_channel = quantum_channel
+        sealed_package = VGroup(Rectangle(width=1.2, height=0.7, fill_opacity=1, color=DARK_GREY)).move_to(alice.get_right())
+        messenger = Messenger().move_to(alice.get_right())
+        self.play(FadeIn(sealed_package), FadeIn(messenger))
+        self.play(messenger.travel(quantum_channel))
+        self.wait(2)
 
-
-    def alice_prepares_qubits(self):
-        # Narrator: "Alice begins by generating two random sequences..."
+class AlicePreparesAndEncodesScene(Scene):
+    def construct(self):
+        # 1. Alice's Workspace
+        alice = Character(name="Alice", position=LEFT * 5)
+        self.add(alice)
         self.camera.frame.save_state()
-        self.play(self.camera.frame.animate.set(width=8).move_to(self.alice_pos + RIGHT*2 + DOWN))
+        self.play(self.camera.frame.animate.set(width=8).move_to(alice.get_center() + RIGHT*2))
 
-        # Generate Alice's random bits and bases
-        num_qubits = 8
-        alice_bits = [random.randint(0, 1) for _ in range(num_qubits)]
-        alice_bases = [random.choice(['Z', 'X']) for _ in range(num_qubits)]
+        # 2. Generate Random Sequences
+        bit_values = [0, 1, 1, 0, 1, 0, 0, 1]
+        basis_choices = ['Z', 'X', 'Z', 'X', 'X', 'Z', 'Z', 'X']
 
-        bits_text = Text("Bits (aᵢ): ", font_size=32).to_edge(UP, buff=1)
-        bases_text = Text("Bases (bᵢ):", font_size=32).next_to(bits_text, DOWN, aligned_edge=LEFT)
-        self.play(Write(bits_text), Write(bases_text))
-        self.wait()
+        bit_labels = VGroup(*[Integer(b) for b in bit_values]).arrange(RIGHT, buff=0.5).next_to(alice, RIGHT)
+        basis_labels = VGroup(*[
+            Rectangle(width=0.5, height=0.8, color=(BLUE if b == 'Z' else RED)).add(Text(b))
+            for b in basis_choices
+        ]).arrange(RIGHT, buff=0.4).next_to(bit_labels, DOWN, buff=0.5)
 
-        bit_mobs = VGroup(*[Text(str(b)) for b in alice_bits]).arrange(RIGHT).next_to(bits_text, RIGHT)
-        base_mobs = VGroup(*[
-            Text(b, color=Z_BASIS_COLOR if b == 'Z' else X_BASIS_COLOR) for b in alice_bases
-        ]).arrange(RIGHT).next_to(bases_text, RIGHT)
-
-        self.play(LaggedStart(*[Write(mob) for mob in bit_mobs], lag_ratio=0.2))
-        self.play(LaggedStart(*[Write(mob) for mob in base_mobs], lag_ratio=0.2))
-        self.wait(2)
-
-        # Narrator: "For each bit, Alice prepares a qubit – a single card."
-        qubit_cards = VGroup(*[
-            QubitCard(bit_value=alice_bits[i], basis=alice_bases[i]) for i in range(num_qubits)
-        ]).arrange(RIGHT, buff=0.2).next_to(base_mobs, DOWN, buff=1)
-        
-        self.play(LaggedStart(*[FadeIn(card, shift=UP) for card in qubit_cards], lag_ratio=0.2))
-        self.wait(2)
-        
-        self.play(FadeOut(bits_text, bases_text, bit_mobs, base_mobs))
-        return alice_bits, alice_bases, qubit_cards
-
-
-    def alice_sends_package(self, qubit_cards):
-        # Narrator: "She then flips the cards face down and places them into a package."
-        package = SurroundingRectangle(qubit_cards, buff=0.2, color=YELLOW)
-        package_label = Text("Quantum Package", font_size=24).next_to(package, UP)
-        
-        self.play(Create(package), Write(package_label))
-        self.wait()
-        
-        self.messenger = VGroup(package, package_label, qubit_cards)
-        self.play(self.messenger.animate.move_to(self.quantum_channel.get_start()))
-        self.play(Restore(self.camera.frame))
-        self.wait()
-
-    def eve_eavesdrops(self, qubit_cards):
-        # Narrator: "Eve, a malicious third party, attempts to learn the key."
-        self.play(self.messenger.animate.move_to(self.quantum_channel.point_from_proportion(0.5)))
-        self.play(self.camera.frame.animate.set(width=10).move_to(self.eve_pos + UP*2))
-        
-        eve_bases = [random.choice(['Z', 'X']) for _ in range(len(qubit_cards))]
-        eve_results = [None] * len(qubit_cards)
-
-        eve_bases_text = Text("Eve's Bases:", font_size=28, color=EVE_COLOR).next_to(self.eve_pos, UP, buff=1.5, aligned_edge=LEFT)
-        self.play(Write(eve_bases_text))
-
-        for i, card in enumerate(qubit_cards):
-            original_basis = card.basis
-            eve_basis = eve_bases[i]
-            
-            # Eve chooses a basis to measure
-            eve_basis_mob = Text(eve_basis, color=Z_BASIS_COLOR if eve_basis == 'Z' else X_BASIS_COLOR)
-            eve_basis_mob.next_to(eve_bases_text, RIGHT, buff=i+1)
-            self.play(Write(eve_basis_mob))
-            
-            # Eve measures the card
-            card.save_state()
-            self.play(card.animate.scale(1.2).next_to(eve_basis_mob, DOWN, buff=0.5))
-            
-            # Flip card to "measure"
-            card.flip_card(self)
-
-            if original_basis == eve_basis:
-                # Narrator: "If Eve guesses the correct basis, she discovers the original bit..."
-                eve_results[i] = card.bit_value
-                self.play(Indicate(card.face_value_text))
-            else:
-                # Narrator: "But if Eve guesses the wrong basis... the very act of 'looking' changes the card."
-                # TODO: Implement flashing number animation
-                new_bit = random.randint(0, 1)
-                new_face_text = Text(str(new_bit)).move_to(card.face_value_text.get_center())
-                self.play(Transform(card.face_value_text, new_face_text))
-                
-                # The card is now corrupted
-                card.bit_value = new_bit
-                card.basis = eve_basis # The basis collapses to what it was measured in
-                card.corrupted = True
-                eve_results[i] = new_bit
-
-            self.wait(0.5)
-            card.flip_card(self) # Flip back face down
-            self.play(Restore(card))
-            self.wait(0.5)
-
-        self.play(FadeOut(eve_bases_text, VGroup(*self.mobjects[-len(qubit_cards):]))) # Fade out basis texts
-        return eve_bases, eve_results
-
-    def messenger_continues_to_bob(self, qubit_cards):
-        # Narrator: "Bob confirms to Alice that the cards have arrived."
-        self.play(Restore(self.camera.frame))
-        self.play(self.messenger.animate.move_to(self.quantum_channel.get_end()))
+        self.play(Write(Text("Alice's Bits:").next_to(bit_labels, LEFT)))
+        self.play(AnimationGroup(*[FadeIn(b, shift=UP) for b in bit_labels], lag_ratio=0.1))
+        self.play(Write(Text("Alice's Bases:").next_to(basis_labels, LEFT)))
+        self.play(AnimationGroup(*[FadeIn(b, shift=UP) for b in basis_labels], lag_ratio=0.1))
         self.wait(1)
 
-    def bob_measures_qubits(self, qubit_cards):
-        # Narrator: "Bob also randomly chooses his own sequence of measurement bases."
-        self.play(self.camera.frame.animate.set(width=8).move_to(self.bob_pos + LEFT*2 + DOWN))
+        # 3. Encode Cards
+        encoded_cards = VGroup()
+        for i in range(len(bit_values)):
+            card = Card(value=bit_values[i], basis=basis_choices[i])
+            self.add(card.move_to(bit_labels[i].get_center() + DOWN * 3))
+            self.play(card.flip(), run_time=0.5) # Flip it to be face down
+            self.play(card.animate.move_to(ORIGIN + DOWN*2 + RIGHT*(i - 3.5)*0.8), run_time=0.5)
+            encoded_cards.add(card)
 
-        bob_bases = [random.choice(['Z', 'X']) for _ in range(len(qubit_cards))]
-        bob_results = [None] * len(qubit_cards)
-
-        bob_bases_text = Text("Bob's Bases (b'ᵢ):", font_size=32).to_edge(UP, buff=1)
-        bob_results_text = Text("Bob's Results (a'ᵢ):", font_size=32).next_to(bob_bases_text, DOWN, aligned_edge=LEFT)
-        self.play(Write(bob_bases_text), Write(bob_results_text))
-
-        base_mobs = VGroup(*[
-            Text(b, color=Z_BASIS_COLOR if b == 'Z' else X_BASIS_COLOR) for b in bob_bases
-        ]).arrange(RIGHT).next_to(bob_bases_text, RIGHT)
-        self.play(Write(base_mobs))
-        self.wait()
-
-        self.play(qubit_cards.animate.arrange(RIGHT, buff=0.2).next_to(bob_results_text, DOWN, buff=1))
-
-        result_mobs = VGroup()
-        for i, card in enumerate(qubit_cards):
-            card.flip_card(self)
-            
-            if card.basis != bob_bases[i] and not card.corrupted:
-                 # TODO: Implement flashing number animation for collapse
-                card.bit_value = random.randint(0, 1)
-                new_face_text = Text(str(card.bit_value)).move_to(card.face_value_text.get_center())
-                self.play(ReplacementTransform(card.face_value_text, new_face_text))
-            
-            bob_results[i] = card.bit_value
-            result_mob = Text(str(bob_results[i])).move_to(card.get_center())
-            result_mobs.add(result_mob)
-
-        self.play(Transform(qubit_cards, result_mobs))
-        self.wait(2)
-        self.play(FadeOut(bob_bases_text, bob_results_text, base_mobs, qubit_cards))
-        return bob_bases, bob_results
-
-
-    def basis_comparison(self, alice_bases, bob_bases):
-        # Narrator: "Now, Alice and Bob communicate again over the classical channel..."
+        # 4. Package and Send
+        package = Rectangle(width=encoded_cards.width + 0.5, height=encoded_cards.height + 0.5, color=DARK_GREY)
+        self.play(Create(package))
+        self.play(FadeOut(encoded_cards), FadeOut(package)) # Visual shorthand for packaging
         self.play(Restore(self.camera.frame))
-        
-        comparison_title = Text("Phase 5: Basis Comparison").to_edge(UP)
-        self.play(Write(comparison_title))
+        self.wait(1)
 
-        alice_text = Text("Alice's Bases:", font_size=36).shift(UP*2 + LEFT*4)
-        bob_text = Text("Bob's Bases:", font_size=36).shift(UP*1 + LEFT*4)
+class MosheInterceptsScene(Scene):
+    def construct(self):
+        # 1. Interception
+        moshe = Character(name="Moshe", position=DOWN * 2)
+        self.add(moshe)
+        card_to_intercept = Card(value=0, basis='Z', is_face_up=False) # Example: Alice sent |0>
+        self.play(card_to_intercept.animate.move_to(moshe.get_center() + UP*1.5))
+
+        # 2. Scenario: Mismatched Basis Guess
+        guess_text = Text("Moshe's Guess: Basis 'X' (Incorrect)", font_size=28).to_edge(UP)
+        self.play(Write(guess_text))
         
-        alice_base_mobs = VGroup(*[
-            Text(b, color=Z_BASIS_COLOR if b == 'Z' else X_BASIS_COLOR) for b in alice_bases
-        ]).arrange(RIGHT).next_to(alice_text, RIGHT)
-        bob_base_mobs = VGroup(*[
-            Text(b, color=Z_BASIS_COLOR if b == 'Z' else X_BASIS_COLOR) for b in bob_bases
-        ]).arrange(RIGHT).next_to(bob_text, RIGHT)
+        red_measurement_mat = Rectangle(width=1.5, height=2, color=RED, fill_opacity=0.3).next_to(moshe, UP)
+        self.play(FadeIn(red_measurement_mat))
+        self.play(card_to_intercept.animate.move_to(red_measurement_mat.get_center()))
         
-        self.play(Write(alice_text), Write(bob_text), Write(alice_base_mobs), Write(bob_base_mobs))
+        # This is the key visual: the flip randomizes the state and alters the card
+        self.play(card_to_intercept.flip_with_randomization()) # Outcome is now random, e.g., 1
+        self.wait(0.5)
+        self.play(card_to_intercept.alter_basis('X')) # The card's back is now repainted red
+        self.wait(0.5)
+        self.play(card_to_intercept.flip()) # Flip it back face down
+        
+        result_text = Text("Result: Card is now |1> encoded in 'X' basis. An error is introduced.", font_size=24)
+        result_text.next_to(guess_text, DOWN)
+        self.play(Write(result_text))
         self.wait(2)
-
-        sifted_key_indices = []
-        discard_pile = VGroup().to_corner(DR)
         
+        # 3. Moshe returns the altered card
+        self.play(FadeOut(card_to_intercept, guess_text, result_text, red_measurement_mat))
+
+class BobMeasuresScene(Scene):
+    def construct(self):
+        # 1. Setup Bob's workspace
+        bob = Character(name="Bob", position=RIGHT * 5)
+        self.add(bob)
+        self.camera.frame.save_state()
+        self.play(self.camera.frame.animate.set(width=8).move_to(bob.get_center() + LEFT*2))
+
+        # 2. Bob receives cards and chooses bases
+        # Simplified for clarity: we show one card measurement
+        received_card = Card(value=1, basis='X', is_face_up=False) # This is the card Moshe altered
+        bobs_basis_choice = 'Z' # Bob guesses wrong as well
+        
+        self.play(received_card.animate.move_to(bob.get_center() + LEFT * 2))
+        
+        bobs_basis_text = Text(f"Bob's Basis Choice: '{bobs_basis_choice}'", font_size=28).to_edge(UP)
+        self.play(Write(bobs_basis_text))
+
+        blue_measurement_mat = Rectangle(width=1.5, height=2, color=BLUE, fill_opacity=0.3).next_to(bob, LEFT)
+        self.play(FadeIn(blue_measurement_mat))
+        self.play(received_card.animate.move_to(blue_measurement_mat.get_center()))
+
+        # 3. Bob measures
+        # Because bases (card's 'X' vs Bob's 'Z') are mismatched, the result is random
+        self.play(received_card.flip_with_randomization())
+        # Let's say the random result is 0
+        bobs_result = Text("Bob's Result: 0", font_size=28).next_to(bobs_basis_text, DOWN)
+        self.play(Write(bobs_result))
+        self.wait(2)
+        self.play(Restore(self.camera.frame))
+
+class TheSiftScene(Scene):
+    def construct(self):
+        # 1. Display Basis sequences
+        alice_bases = ['Z', 'X', 'Z', 'X', 'X', 'Z', 'Z', 'X']
+        bob_bases =   ['Z', 'Z', 'Z', 'X', 'Z', 'Z', 'X', 'X']
+
+        alice_row = VGroup(*[
+            Rectangle(width=0.5, height=0.8, color=(BLUE if b == 'Z' else RED)).add(Text(b))
+            for b in alice_bases
+        ]).arrange(RIGHT, buff=0.4).shift(UP * 2)
+        
+        bob_row = VGroup(*[
+            Rectangle(width=0.5, height=0.8, color=(BLUE if b == 'Z' else RED)).add(Text(b))
+            for b in bob_bases
+        ]).arrange(RIGHT, buff=0.4)
+        
+        self.play(Write(Text("Alice's Bases:").next_to(alice_row, LEFT)), FadeIn(alice_row))
+        self.play(Write(Text("Bob's Bases:").next_to(bob_row, LEFT)), FadeIn(bob_row))
+        self.wait(1)
+
+        # 2. Compare each basis
+        comparison_results = VGroup()
         for i in range(len(alice_bases)):
-            a_base = alice_base_mobs[i]
-            b_base = bob_base_mobs[i]
+            highlighter = SurroundingRectangle(VGroup(alice_row[i], bob_row[i]), buff=0.2)
+            self.play(Create(highlighter))
             
-            match_box = SurroundingRectangle(VGroup(a_base, b_base))
-            self.play(Create(match_box))
-
             if alice_bases[i] == bob_bases[i]:
-                # Narrator: "Only in positions where their bases match..."
-                sifted_key_indices.append(i)
-                self.play(match_box.animate.set_color(GREEN))
-                self.wait(0.2)
+                result = VGroup(Checkmark(color=GREEN), Text("KEEP")).arrange(DOWN)
             else:
-                # Narrator: "All other bits are discarded."
-                self.play(match_box.animate.set_color(RED))
-                self.play(
-                    FadeOut(match_box),
-                    a_base.animate.move_to(discard_pile),
-                    b_base.animate.move_to(discard_pile)
-                )
-
-        self.wait(2)
-        sifted_key_text = Text("Sifted Key Indices: " + ", ".join(map(str, sifted_key_indices))).next_to(comparison_title, DOWN, buff=2)
-        self.play(Write(sifted_key_text))
-        self.wait(2)
-        
-        # Cleanup
-        self.play(FadeOut(comparison_title, alice_text, bob_text, alice_base_mobs, bob_base_mobs, sifted_key_text, VGroup(*[m for m in self.mobjects if isinstance(m, SurroundingRectangle)])))
-        return sifted_key_indices
-
-
-    def verify_key(self, sifted_indices, alice_bits, bob_results, eve_results):
-        # Narrator: "To ensure no one interfered, they randomly select a small number of bits..."
-        verification_title = Text("Phase 6: Sampling and Verification").to_edge(UP)
-        self.play(Write(verification_title))
-
-        # Reconstruct the sifted keys
-        alice_sifted = [alice_bits[i] for i in sifted_indices]
-        bob_sifted = [bob_results[i] for i in sifted_indices]
-        
-        alice_sifted_text = Text("Alice's Sifted Key:", font_size=36).shift(UP*2 + LEFT*4)
-        bob_sifted_text = Text("Bob's Sifted Key:", font_size=36).shift(UP*1 + LEFT*4)
-        
-        alice_mobs = VGroup(*[Text(str(b)) for b in alice_sifted]).arrange(RIGHT).next_to(alice_sifted_text, RIGHT)
-        bob_mobs = VGroup(*[Text(str(b)) for b in bob_sifted]).arrange(RIGHT).next_to(bob_sifted_text, RIGHT)
-        
-        self.play(Write(alice_sifted_text), Write(bob_sifted_text), Write(alice_mobs), Write(bob_mobs))
-        self.wait(2)
-        
-        # Choose a random test bit
-        test_index = random.randint(0, len(alice_sifted)-1)
-        
-        test_bit_indicator = Arrow(
-            start=UP, end=DOWN
-        ).next_to(alice_mobs[test_index], UP)
-        self.play(Create(test_bit_indicator))
-        
-        # Compare test bits
-        alice_test_bit = alice_sifted[test_index]
-        bob_test_bit = bob_sifted[test_index]
-        
-        if alice_test_bit == bob_test_bit:
-            # Narrator: "If all test bits match, they assume the channel was clean!"
-            result_text = Text("Test Bits Match!", color=GREEN, font_size=48).shift(DOWN*2)
-            self.play(Write(result_text))
+                result = VGroup(Cross(color=RED), Text("DISCARD")).arrange(DOWN)
             
-            final_key = alice_sifted
-            final_key.pop(test_index)
-            key_text = Text(f"Shared Secret Key: {''.join(map(str, final_key))}", font_size=48).move_to(result_text).shift(DOWN)
-            self.play(Write(key_text))
-        else:
-            # Narrator: "But if even one bit doesn't match – it's a definite indication that Eve was listening!"
-            result_text = Text("Eavesdropping Detected!", color=RED, font_size=48).shift(DOWN*2)
-            self.play(Write(result_text))
-            
-            compromised_text = Text("Key Discarded. Restart Protocol.", font_size=48).move_to(result_text).shift(DOWN)
-            self.play(Write(compromised_text))
-            
-        self.wait(5)
+            result.next_to(highlighter, DOWN)
+            self.play(FadeIn(result))
+            self.play(FadeOut(highlighter))
+            comparison_results.add(result)
+        self.wait(2)
+
+class ErrorCheckingScene(Scene):
+    def construct(self):
+        # 1. Define Sifted Keys (Alice's original vs Bob's measured)
+        # Bases matched at indices 0, 2, 3, 5, 7
+        alice_sifted_key = [0, 1, 0, 0, 1] # Original values
+        bob_sifted_key =   [0, 1, 1, 0, 1] # Bob's values. Note the error at index 2 from Moshe's interception.
+
+        alice_display = VGroup(*[Integer(b) for b in alice_sifted_key]).arrange(RIGHT).shift(UP*2)
+        bob_display = VGroup(*[Integer(b) for b in bob_sifted_key]).arrange(RIGHT)
+
+        self.play(Write(Text("Alice's Sifted Key:").next_to(alice_display, LEFT)), FadeIn(alice_display))
+        self.play(Write(Text("Bob's Sifted Key:").next_to(bob_display, LEFT)), FadeIn(bob_display))
+        self.wait(1)
+
+        # 2. Select Test Bits
+        test_indices = [1, 2, 4] # They agree to compare these
+        test_label = Text("Publicly Comparing Test Bits", font_size=32).to_edge(UP)
+        self.play(Write(test_label))
+        
+        highlights = VGroup()
+        for i in test_indices:
+            highlights.add(SurroundingRectangle(alice_display[i], color=YELLOW))
+            highlights.add(SurroundingRectangle(bob_display[i], color=YELLOW))
+        self.play(Create(highlights))
+        self.wait(1)
+
+        # 3. Reveal Error
+        error_index = 2
+        error_highlight = SurroundingRectangle(VGroup(alice_display[error_index], bob_display[error_index]), color=RED, stroke_width=8)
+        error_text = Text("ERROR DETECTED!", color=RED).next_to(error_highlight, DOWN)
+        self.play(Create(error_highlight))
+        self.play(Write(error_text))
+
+        # 4. Abort Protocol
+        abort_text = Text("Key is Compromised! ABORT.", font_size=40, color=RED)
+        self.wait(1)
+        self.play(
+            FadeOut(VGroup(alice_display, bob_display, highlights, error_highlight, error_text, test_label)),
+            FadeIn(abort_text)
+        )
+        self.wait(2)
+
+class ConclusionScene(Scene):
+    def construct(self):
+        # NOTE: This scene shows the successful case for a good conclusion.
+        # In a full video, this would follow a successful ErrorCheckScene.
+        
+        # 1. Show the final, secure key
+        final_key = VGroup(*[Integer(d) for d in [0, 0]]).arrange(RIGHT, buff=0.5) # The non-test bits
+        final_key_label = Text("Final Shared Secret Key", font_size=40, color=GREEN)
+        VGroup(final_key_label, final_key).arrange(DOWN, buff=0.5)
+        self.play(Write(final_key_label), FadeIn(final_key))
+        self.wait(1)
+
+        # 2. Concluding Text
+        conclusion_text = Text(
+            "Security is guaranteed by the principle of observation.",
+            font_size=32
+        ).to_edge(DOWN)
+        self.play(Write(conclusion_text))
+        self.wait(2)
+        
+        # 3. Transition back to the article
+        transition_text = Text("Now, let's connect these rules to the principles of quantum mechanics.", font_size=32)
+        self.play(FadeOut(VGroup(final_key_label, final_key, conclusion_text)), FadeIn(transition_text))
+        self.wait(3)
